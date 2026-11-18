@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<base target="_blank">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>캠페인 접수 확인 | 안전방재팀</title>
+<meta charset="utf-8">
+<style>
+  body{margin:0;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:#f4f6f9;color:#1c2430}
+  header{background:#1f3a5f;color:#fff;padding:16px 20px;display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+  header h1{font-size:18px;margin:0;flex:1}
+  .stat{background:rgba(255,255,255,.12);padding:6px 12px;border-radius:6px;font-size:14px}
+  .stat b{color:#ffc928;font-size:17px}
+  header a{color:#fff;font-size:13px}
+  .bar{padding:10px 20px;display:flex;gap:10px;align-items:center;font-size:14px}
+  .bar input{padding:7px 10px;border:1px solid #ccd3dd;border-radius:6px;width:220px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;padding:0 20px 30px}
+  .g{background:#fff;border:1px solid #d9dee6;border-radius:10px;overflow:hidden}
+  .g .top{padding:8px 12px;font-size:13px;color:#5b6676;display:flex;justify-content:space-between}
+  .ph{display:flex;gap:4px;overflow-x:auto;background:#eef1f5;min-height:140px;align-items:center;padding:4px}
+  .ph img{height:180px;border-radius:4px;cursor:zoom-in}
+  .ph .load{margin:auto;font-size:13px;color:#7a8594}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  td,th{padding:6px 8px;border-top:1px solid #eef1f5;text-align:left}
+  th{background:#f8fafc;font-weight:600;color:#5b6676}
+  tr.dup td{background:#fde2e1}
+  td.c{text-align:center}
+  input[type=checkbox]{width:17px;height:17px;cursor:pointer}
+  .tb{border:1px solid #1f3a5f;background:#fff;color:#1f3a5f;padding:7px 12px;border-radius:6px;font-weight:700;cursor:pointer}
+  .tb.on{background:#1f3a5f;color:#fff}
+  .vt{padding:10px 12px;font-size:15px;font-weight:700;color:#1f3a5f}
+  .vd{padding:0 12px 8px;font-size:13px;color:#3d4756;white-space:pre-wrap}
+  .vl{display:inline-block;margin:0 12px 10px;padding:7px 12px;background:#ffc928;color:#1f3a5f;border-radius:6px;font-weight:700;text-decoration:none;font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <h1>보호구 캠페인 — 접수 확인</h1>
+  <span class="stat">접수 <b id="sTotal">-</b>건(명)</span>
+  <span class="stat">실인원 <b id="sUniq">-</b> / <span id="sLimit">200</span>명</span>
+  <span class="stat">확인 <b id="sOk">-</b> · 쿠폰발송 <b id="sSent">-</b></span>
+  <a id="sheetLink" href="#">구글 시트 열기 ↗</a>
+</header>
+<div class="bar"><button type="button" class="tb on" data-t="selfie">📷 인증 셀카</button><button type="button" class="tb" data-t="shorts">🎬 쇼츠 <span id="sCnt"></span></button> &nbsp; 검색 <input id="q" placeholder="학번·이름·학과"> <label><input type="checkbox" id="onlyTodo"> 미확인만</label></div>
+<div class="grid" id="grid">불러오는 중…</div>
+
+<script>
+var KEY = (new URLSearchParams(location.search)).get('key') || '', DATA = null, SHORTS = [], TAB = 'selfie';
+var EXEC = 'https://script.google.com/macros/s/AKfycbz6NEt2rb0IdmbKkpE09YPvmrJPuNZwSboED-M0GWuseoBZC2VZkedwvtdLaGYPDW7Y/exec';
+function run(fn) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  return fetch(EXEC, { method: 'POST', credentials: 'omit', redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: fn, args: args }) })
+    .then(function (r) { if (!r.ok) throw new Error('서버 연결 오류(' + r.status + ')'); return r.json(); })
+    .then(function (j) { if (!j.ok) throw new Error(j.error || '처리 중 오류'); return j.data; });
+}
+
+var $ = function (id) { return document.getElementById(id); };
+load();
+$('q').oninput = draw; $('onlyTodo').onchange = draw;
+document.querySelectorAll('.tb').forEach(function (b) { b.onclick = function () {
+  TAB = b.dataset.t; document.querySelectorAll('.tb').forEach(function (x) { x.classList.toggle('on', x === b); }); draw(); }; });
+function draw() { if (TAB === 'shorts') renderShorts(); else if (DATA) render(); }
+
+function load() {
+  if (!KEY) { $('grid').textContent = '관리자키가 필요합니다. (주소 끝에 ?key=관리자키)'; return; }
+  run('adminList', KEY).then(function (d) { DATA = d; $('sheetLink').href = d.sheet || '#'; draw(); })
+    .catch(function (e) { $('grid').textContent = '오류: ' + e.message; });
+  run('adminShorts', KEY).then(function (d) { SHORTS = d; $('sCnt').textContent = '(' + d.length + ')'; draw(); });
+}
+
+function renderShorts() {
+  var q = $('q').value.trim(), todo = $('onlyTodo').checked, grid = $('grid'); grid.innerHTML = '';
+  SHORTS.filter(function (g) {
+    var hit = !q || (g.title + g.people.map(function (p) { return p.id + p.name + p.dept; }).join('')).indexOf(q) > -1;
+    return hit && (!todo || g.people.some(function (p) { return !p.ok; }));
+  }).forEach(function (g) {
+    var el = document.createElement('div'); el.className = 'g';
+    el.innerHTML = '<div class="top"><span>접수 ' + g.no + '</span><span>' + g.time + ' · ' + g.mb + 'MB · ' + g.people.length + '명</span></div>' +
+      '<div class="vt">' + esc(g.title) + '</div>' + (g.desc ? '<div class="vd">' + esc(g.desc) + '</div>' : '') +
+      (g.url ? '<a class="vl" href="' + g.url + '">▶ 영상 보기</a>' : '') +
+      '<table><tr><th>학번</th><th>학과</th><th>이름</th><th class="c">확인</th><th class="c">참가상</th></tr>' +
+      g.people.map(function (p) {
+        return '<tr><td>' + esc(p.id) + '</td><td>' + esc(p.dept) + '</td><td>' + esc(p.name) + '</td>' +
+          '<td class="c"><input type="checkbox" data-r="' + p.row + '" data-c="10"' + (p.ok ? ' checked' : '') + '></td>' +
+          '<td class="c"><input type="checkbox" data-r="' + p.row + '" data-c="11"' + (p.sent ? ' checked' : '') + '></td></tr>';
+      }).join('') + '</table>';
+    el.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
+      cb.onchange = function () {
+        var r = +cb.dataset.r, c = +cb.dataset.c;
+        g.people.forEach(function (p) { if (p.row === r) { if (c === 10) p.ok = cb.checked; else p.sent = cb.checked; } });
+        run('adminMark', KEY, r, c, cb.checked, 'shorts').catch(function () { cb.checked = !cb.checked; alert('저장 실패'); });
+      };
+    });
+    grid.appendChild(el);
+  });
+  if (!grid.children.length) grid.textContent = '표시할 쇼츠 접수 내역이 없습니다.';
+}
+
+function render() {
+  var q = $('q').value.trim(), todo = $('onlyTodo').checked, ok = 0, sent = 0;
+  $('sTotal').textContent = DATA.total; $('sUniq').textContent = DATA.uniq; $('sLimit').textContent = DATA.limit;
+  DATA.groups.forEach(function (g) { g.people.forEach(function (p) { if (p.ok) ok++; if (p.sent) sent++; }); });
+  $('sOk').textContent = ok; $('sSent').textContent = sent;
+  var grid = $('grid'); grid.innerHTML = '';
+  DATA.groups.filter(function (g) {
+    var hit = !q || g.people.some(function (p) { return (p.id + p.name + p.dept).indexOf(q) > -1; });
+    var open = !todo || g.people.some(function (p) { return !p.ok; });
+    return hit && open;
+  }).forEach(function (g) {
+    var el = document.createElement('div'); el.className = 'g';
+    el.innerHTML = '<div class="top"><span>접수 ' + g.no + '</span><span>' + g.time + ' · ' + g.people.length + '명</span></div>' +
+      '<div class="ph"><span class="load">사진 불러오는 중…</span></div>' +
+      '<table><tr><th>학번</th><th>학과</th><th>이름</th><th class="c">확인</th><th class="c">쿠폰</th></tr>' +
+      g.people.map(function (p) {
+        return '<tr class="' + (p.dup ? 'dup' : '') + '"><td>' + esc(p.id) + (p.dup ? ' <small>(중복)</small>' : '') + '</td><td>' + esc(p.dept) + '</td><td>' + esc(p.name) + '</td>' +
+          '<td class="c"><input type="checkbox" data-r="' + p.row + '" data-c="10"' + (p.ok ? ' checked' : '') + '></td>' +
+          '<td class="c"><input type="checkbox" data-r="' + p.row + '" data-c="11"' + (p.sent ? ' checked' : '') + '></td></tr>';
+      }).join('') + '</table>';
+    el.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
+      cb.onchange = function () {
+        var r = +cb.dataset.r, c = +cb.dataset.c;
+        g.people.forEach(function (p) { if (p.row === r) { if (c === 10) p.ok = cb.checked; else p.sent = cb.checked; } });
+        run('adminMark', KEY, r, c, cb.checked, 'selfie').catch(function () { cb.checked = !cb.checked; alert('저장 실패'); });
+        render();
+      };
+    });
+    grid.appendChild(el);
+    loadPhotos(g, el.querySelector('.ph'));
+  });
+  if (!grid.children.length) grid.textContent = '표시할 접수 내역이 없습니다.';
+}
+
+var cache = {};
+function loadPhotos(g, box) {
+  var put = function (list) {
+    box.innerHTML = list.length ? '' : '<span class="load">사진 없음</span>';
+    list.forEach(function (p) { var a = document.createElement('a'); a.href = p.url; a.innerHTML = '<img src="' + p.src + '">'; box.appendChild(a); });
+  };
+  if (cache[g.no]) return put(cache[g.no]);
+  run('adminPhotos', KEY, g.no).then(function (l) { cache[g.no] = l; put(l); });
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+</script>
+</body>
+</html>
